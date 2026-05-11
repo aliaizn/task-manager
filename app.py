@@ -100,7 +100,6 @@ def login():
     cur.close()
     conn.close()
     
-    print(f"user is: {user}")
     if user is None:
         return jsonify({"msg": "Bad username or password"}), 401
 
@@ -139,12 +138,41 @@ def list_tasks():
     cur.close()
     conn.close()
     return jsonify(tasks), 200
-            
-# def protected():
 
-#     current_user = get_jwt_identity()
-#     return jsonify(logged_in_as=current_user), 200
+@app.route("/api/v1/tasks", methods=["POST"])
+@jwt_required()
+def create_task():
+   user = get_current_user()
+   data = request.get_json()
+   category_id = request.json.get("category_id")
+   title = request.json.get("title")
+   description = request.json.get("description")
+   due_date= request.json.get("due_date")
+   priority = request.json.get("priority")
 
+   if title is None:
+       return jsonify({"msg": "title is missing"}), 400
+       
+
+   conn = get_db_connection()
+   cur = conn.cursor()
+
+   if category_id is not None:
+       cur.execute("SELECT id, user_id FROM categories WHERE id = %s", (category_id,))
+       row = cur.fetchone()
+       if row is None or row['user_id'] != user['id']:
+           return jsonify({"msg": "Invalid category"}), 400
+       
+   cur.execute(
+       "INSERT INTO tasks (title, description, due_date, priority, category_id, user_id) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id", (title, description, due_date, priority, category_id, user['id'])
+)
+   new_id = cur.fetchone()["id"]
+   conn.commit()
+   cur.close()
+   conn.close()
+
+   return jsonify({"msg": "Task created", "id":new_id}), 201
+   
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5005, debug=True)
