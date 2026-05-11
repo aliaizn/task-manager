@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 import psycopg2
 import psycopg2.extras  # for dict-like rows
@@ -35,7 +35,19 @@ def get_db_connection():
     conn.cursor_factory = psycopg2.extras.RealDictCursor
     return conn
     
-
+def get_current_user():
+    """Return the user dict for the currently authenticated user."""
+    user_id = get_jwt_identity()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, username FROM users WHERE id = %s", (int(user_id),))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    if user is None:
+        abort(404, description="User not found")
+    return user
+    
 
 @app.route("/api/v1/health")
 def hello_world():
@@ -100,9 +112,38 @@ def login():
 
 @app.route("/api/v1/tasks", methods=['GET'])
 @jwt_required()
-def protected():
-    current_user = get_jwt_identity()
-    return jsonify(logged_in_as=current_user), 200
+def list_tasks():
+    user = get_current_user()
+    # Get filters from query strings (optional)
+    category_id = request.args.get("category_id", type=int)
+    status = request.args.get("status") # "done" or "pending"
+
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = "SELECT * FROM tasks WHERE user_id = %s"
+    params = [user["id"]]
+
+    if category_id is not None:
+        query += " AND category_id = %s"
+        params.append(category_id)
+    if status == "done":
+        query += " AND completed = TRUE"
+    elif status == "pending":
+        query += " AND completed = FALSE"
+
+    query += " ORDER BY created_at DESC"
+    cur.execute(query, params)
+    tasks = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(tasks), 200
+            
+# def protected():
+
+#     current_user = get_jwt_identity()
+#     return jsonify(logged_in_as=current_user), 200
 
 
 if __name__ == '__main__':
