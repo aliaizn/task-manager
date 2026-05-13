@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 import psycopg2
 import psycopg2.extras  # for dict-like rows
+import os
+from dotenv import load_dotenv
 
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity
@@ -11,16 +13,18 @@ from flask_jwt_extended import JWTManager
 app = Flask(__name__)
 
 # Setup the Flask-JWT-Extended extention
-app.config["JWT_SECRET_KEY"] = "super-secret"
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "dev-sercret-change-me")
 jwt = JWTManager(app)
 
 
 # Database configuration
-DB_HOST = "localhost"
-DB_NAME = "taskmanager"
-DB_USER = "postgres"
-DB_PASS = "devpass"
-DB_PORT = 5431
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_NAME = os.environ.get("DB_NAME", "taskmanager")
+DB_USER = os.environ.get("DB_USER", "postgres")
+DB_PASS = os.environ.get("DB_PASS", "devpass")
+DB_PORT = int(os.environ.get("DB_PORT", 5431))
+
+load_dotenv()
 
 def get_db_connection():
     """Return a database connection and configure row factory."""
@@ -49,9 +53,9 @@ def get_current_user():
     return user
     
 
-@app.route("/api/v1/health")
+@app.route("/api/v1/health", methods=["GET"])
 def hello_world():
-    return "<p>OK</P>"
+    return  jsonify({"msg":"OK"}), 200
 
 @app.route("/api/v1/register", methods=["POST"])
 def register():
