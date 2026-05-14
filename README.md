@@ -84,13 +84,6 @@ project is the result: a REST API that any frontend or curl can talk to.
 | GET    | /api/v1/categories | Yes  | List your categories |
 | POST   | /api/v1/categories | Yes  | Create a category    |
 
-
-
-## Author
-
-Ali Aizn
-GitHub: github.com/aliaizn
-
 ## License
 
 MIT
