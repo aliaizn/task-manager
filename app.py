@@ -177,6 +177,128 @@ def create_task():
 
    return jsonify({"msg": "Task created", "id":new_id}), 201
    
+@app.route("/api/v1/tasks/<int:task_id>", methods=["DELETE"])
+@jwt_required()
+def remove_task(task_id):
+    user = get_current_user()
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT user_id FROM tasks WHERE id = %s", (task_id,))
+    task = cur.fetchone()
+
+    if task is None:
+        # Task doesn't exist - return 404
+        cur.close()
+        conn.close()
+        return jsonify({"msg": "Task not found"}), 404
+    
+    if task["user_id"] != user['id']:
+        # Task belong to another user - don't reveal existence, just 404
+        cur.close()
+        conn.close()
+        return jsonify({"msg": "Task not found"}), 404
+    
+    # Delete it
+    cur.execute("DELETE FROM tasks where id = %s", (task_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({"msg": "Task Deleted"}), 200
+    
+@app.route("/api/v1/tasks/<int:task_id>", methods=["PUT"])
+@jwt_required()
+def update_task(task_id):
+    user = get_current_user()
+    data = request.get_json()
+   
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Fetch the task and verify ownership 
+    cur.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
+    task = cur.fetchone()
+
+    if task is None or task["user_id"] != user["id"]:
+        cur.close()
+        conn.close()
+        return jsonify({"msg": "Task not found"}), 404
+
+    # Check category if provided
+    category_id = data.get("category_id")
+    if category_id is not None:
+       cur.execute("SELECT user_id FROM categories WHERE id = %s", (category_id,))
+       cat = cur.fetchone()
+       if cat is None or cat['user_id'] != user['id']:
+           cur.close()
+           conn.close()
+           return jsonify({"msg": "Invalid category"}), 400
+
+    # Build the dynamic SET clause
+    allowd_fields = ["title", "description", "due_date", "priority", "completed", "categroy_id"]
+    set_parts = []
+    params = []
+
+    for field in allowd_fields:
+        if field in data:
+            set_parts.append(f"{field} = %s")
+            params.append(data[field])
+       
+    if not set_parts:
+        # No fields to update
+        cur.close()
+        conn.close()
+        return jsonify({"msg": "No fields provided"}), 400
+
+    # Execute the UPDATE
+    params.append(task_id) # for the WHERE clause
+    query = f"UPDATE tasks SET {', '.join(set_parts)} WHERE id = %s"
+    cur.execute(query, params)
+    conn.commit()
+
+    # Fetch the updated task and return it
+    cur.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
+    updated_task = cur.fetchone()
+    cur.close()
+    conn.close()
+    return jsonify(updated_task), 200
+
+@app.route("/api/v1/categories", methods=['GET'])
+@jwt_required()
+def show_category():
+    user = get_current_user()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM categories WHERE user_id = %s ", (user["id"],))
+
+    cat = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(cat), 200
+        
+@app.route("/api/v1/categories", methods=['POST'])
+@jwt_required()
+def create_category():
+    user = get_current_user()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    category_name = request.json.get("name")
+    if category_name is None:
+        return jsonify({"msg": "There is no such cateogry"}), 400
+
+    cur.execute("SELECT * FROM categories WHERE name = %s and user_id = %s", (category_name, user['id']))
+    query = cur.fetchone()
+    if query is not None:
+        return jsonify({"msg": "The category name already exist"}), 409
+    else:
+        cur.execute("INSERT INTO categories (name, user_id) VALUES (%s, %s) RETURNING id", (category_name, user['id']))
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"msg": "category created", "id":new_id}), 201
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5005, debug=True)
